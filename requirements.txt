@@ -1,0 +1,15 @@
+# Core (CPU torch is fine for the test suites; use a CUDA build for training)
+torch
+numpy<1.24          # baseline code uses np.float/np.int (removed in numpy 1.24)
+soundfile
+
+# DCASE baseline (cls_feature_class / metrics) import-time dependencies
+librosa
+scipy
+scikit-learn
+joblib
+matplotlib
+ipython
+
+# Optional: synthetic data generation
+# spatialscaper
