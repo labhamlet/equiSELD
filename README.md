@@ -95,19 +95,89 @@ baseline's;
   with a per-bin scale fitted on the training folds.
 - `cov_aug`: 10-channel covariance features under `cov_feat_label_dir`.
 
-## Running
 
-Every run is identified by a task id, which selects a parameter set in
-`parameters.py` (add a new `elif argv == '<id>':` branch for a new
-configuration), and a job id used in output file names.
+## TAU-NIGENS 2021: getting the data and training equiseld
+
+### Download
+
+TAU-NIGENS Spatial Sound Events 2021 is the DCASE 2021 Task 3 dataset
+(600 one-minute FOA recordings at 24 kHz, 12 classes, 6 folds). It is
+hosted on Zenodo: <https://zenodo.org/record/4844825> (linked from the
+[DCASE 2021 Task 3 page](https://dcase.community/challenge2021/task-sound-event-localization-and-detection)).
+You need the FOA development audio and its metadata.
 
 ```bash
-# 1. extract features and labels for the task's model and feature type
-python batch_feature_extraction.py <task-id>
-
-# 2. train, validate on the val fold, then score the test fold
-python train_seldnet.py <task-id> <job-id>
+mkdir -p /path/to/TAU2021 && cd /path/to/TAU2021
+# foa_dev is a two-part zip: fetch foa_dev.zip and foa_dev.z01
+# plus metadata_dev.zip from the Zenodo record, then
+zip -s 0 foa_dev.zip --out foa_dev_full.zip
+unzip foa_dev_full.zip
+unzip metadata_dev.zip
 ```
+
+After extraction the directory must look like
+
+```
+TAU2021/
+  foa_dev/
+    dev-train/fold1_room1_mix001.wav ...   (folds 1-4)
+    dev-val/  fold5_...wav
+    dev-test/ fold6_...wav
+  metadata_dev/
+    dev-train/fold1_room1_mix001.csv ...
+    dev-val/ ...
+    dev-test/ ...
+```
+
+The feature extractor walks every sub-folder of `foa_dev/` and
+`metadata_dev/`, and the fold of a recording is read from the fifth
+character of its file name (`fold1_...`), so the sub-folder names
+themselves do not matter. The directory name must contain `2021`: that is
+how `parameters.py` and `train_seldnet.py` pick 12 classes and the
+DCASE 2021 protocol (train folds 1-4, validation fold 5, test fold 6).
+The audio is 24 kHz, which matches the default `fs`.
+
+### Configure
+
+Task `40` is the reference configuration for equiseld on this dataset. Its
+paths point at the cluster used for the experiments, so either edit them in
+place or copy the branch under a new id:
+
+```python
+elif argv == '40':
+    print("FOA + multi ACCDOA + equiseld, TAU-NIGENS 2021, DCASE2021 protocol\n")
+    params['quick_test'] = False
+    params['dataset'] = 'foa'
+    params['multi_accdoa'] = True
+    params['model'] = 'equiseld'
+    params['dataset_dir'] = '/path/to/TAU2021'          # must contain "2021"
+    params['feat_label_dir'] = '/path/to/feat_tau21'     # "_equiseld" is appended automatically
+    params['model_dir'] = '/path/to/models'
+    params['dcase_output_dir'] = '/path/to/results'
+    params['nb_epochs'] = 100
+```
+
+
+### Extract features and train
+
+```bash
+# one-off: equiseld front-end features (11 channels, unnormalised) + ADPIT labels
+python batch_feature_extraction.py 40
+
+# train on folds 1-4, select the checkpoint on fold 5, report fold 6
+python train_seldnet.py 40 <job-id>
+```
+
+The run prints per-epoch validation ER / F / LE / LR / SELD score and, at
+the end, the fold-6 test scores with jackknife confidence intervals. The
+best checkpoint is saved as
+`<model_dir>/40_<job-id>_dev_split0_multiaccdoa_foa_model.h5`. To train on a
+subset of folds for data-scaling experiments, set
+`params['train_splits'] = [1, 2]` and so on; validation and test folds stay
+fixed. To confirm the trained model is equivariant on real features, run
+`python verify_equivariance.py 40:<job-id>` (needs the helper modules noted
+
+
 
 Built-in task ids include:
 
